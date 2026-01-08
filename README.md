@@ -6,11 +6,11 @@ To support business decisions, a safety stock is added to forecasted demand to a
 
 key features section :
 
-1  daily sales forecasting
-2 trend and seasonality analysis using prophet
-3 demand prediction using xgboost
-4 inventory planning with safety stock
-5 feature importance analysis
+ daily sales forecasting,
+trend and seasonality analysis using prophet,
+demand prediction using xgboost,
+inventory planning with safety stock,
+feature importance analysis.
 
 conclusion :
 The project demonstrates how combining time-series forecasting and machine learning can improve sales prediction and inventory planning.
