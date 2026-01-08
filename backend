@@ -1,0 +1,180 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+from prophet import Prophet
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+
+# load data
+df = pd.read_csv("data/raw/train.csv", low_memory=False)
+
+# date format
+df['Date'] = pd.to_datetime(df['Date'])
+
+# sort by date
+df = df.sort_values('Date')
+
+# state holiday cleanup
+df['StateHoliday'] = df['StateHoliday'].astype(str)
+df['StateHoliday'] = df['StateHoliday'].replace('0', 'none')
+
+# one hot encoding
+df = pd.get_dummies(df, columns=['StateHoliday'])
+
+# holiday columns
+holiday_cols = [c for c in df.columns if c.startswith('StateHoliday_')]
+df[holiday_cols] = df[holiday_cols].astype(int)
+
+# select store
+store_id = 1
+df = df[df['Store'] == store_id]
+
+# remove closed days
+df = df[df['Open'] == 1]
+
+
+# sales plot
+plt.figure(figsize=(12, 5))
+plt.plot(df['Date'], df['Sales'])
+plt.title("daily sales")
+plt.show()
+
+
+# prophet data
+prophet_df = df[
+    ['Date', 'Sales',
+     'StateHoliday_a',
+     'StateHoliday_b',
+     'StateHoliday_c']
+].rename(columns={'Date': 'ds', 'Sales': 'y'})
+
+
+# prophet model
+model = Prophet(
+    weekly_seasonality=True,
+    yearly_seasonality=True,
+    daily_seasonality=False,
+    n_changepoints=5,
+    changepoint_prior_scale=0.05
+)
+
+# add holidays
+model.add_regressor('StateHoliday_a')
+model.add_regressor('StateHoliday_b')
+model.add_regressor('StateHoliday_c')
+
+# train
+model.fit(prophet_df)
+
+# future dates
+future = model.make_future_dataframe(periods=90)
+
+# no future holidays
+future['StateHoliday_a'] = 0
+future['StateHoliday_b'] = 0
+future['StateHoliday_c'] = 0
+
+# forecast
+forecast = model.predict(future)
+
+# prophet plot
+model.plot(forecast)
+plt.title("prophet forecast")
+plt.show()
+
+
+# date features
+df['day'] = df['Date'].dt.day
+df['week'] = df['Date'].dt.isocalendar().week.astype(int)
+df['month'] = df['Date'].dt.month
+df['year'] = df['Date'].dt.year
+df['day_of_week'] = df['Date'].dt.dayofweek
+df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+
+# lag features
+df['sales_lag_1'] = df['Sales'].shift(1)
+df['sales_lag_7'] = df['Sales'].shift(7)
+df['sales_lag_14'] = df['Sales'].shift(14)
+df['sales_lag_28'] = df['Sales'].shift(28)
+
+# rolling mean
+df['rolling_mean_7'] = df['Sales'].rolling(7).mean()
+df['rolling_mean_14'] = df['Sales'].rolling(14).mean()
+df['rolling_mean_28'] = df['Sales'].rolling(28).mean()
+
+
+# final features
+features = [
+    'day', 'week', 'month', 'year',
+    'day_of_week', 'is_weekend',
+    'Promo',
+    'sales_lag_1', 'sales_lag_7',
+    'sales_lag_14', 'sales_lag_28',
+    'rolling_mean_7', 'rolling_mean_14',
+    'rolling_mean_28'
+] + holiday_cols
+
+# model data
+df_model = df[features + ['Sales']].dropna()
+
+# save file
+df_model.to_csv("data/processed/xgboost_store_1.csv", index=False)
+
+
+# load xgboost data
+df = pd.read_csv("data/processed/xgboost_store_1.csv")
+
+X = df.drop(columns=['Sales'])
+y = df['Sales']
+
+# split
+split = int(len(df) * 0.8)
+X_train, X_test = X.iloc[:split], X.iloc[split:]
+y_train, y_test = y.iloc[:split], y.iloc[split:]
+
+
+# xgboost model
+xgb = XGBRegressor(
+    n_estimators=300,
+    learning_rate=0.05,
+    max_depth=6,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42
+)
+
+# train
+xgb.fit(X_train, y_train)
+
+# predict
+y_pred = xgb.predict(X_test)
+
+# metrics
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+mae = mean_absolute_error(y_test, y_pred)
+
+print("rmse:", rmse)
+print("mae :", mae)
+
+
+# prediction plot
+plt.figure(figsize=(12, 5))
+plt.plot(y_test.values, label="actual")
+plt.plot(y_pred, label="predicted")
+plt.legend()
+plt.title("xgboost result")
+plt.show()
+
+
+# feature importance
+importance = pd.Series(
+    xgb.feature_importances_,
+    index=X.columns
+).sort_values(ascending=False)
+
+# top features
+importance.head(15).plot(kind='bar')
+plt.title("feature importance")
+plt.show()
