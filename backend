@@ -8,7 +8,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 
 # load data
-df = pd.read_csv("data/raw/train.csv", low_memory=False)
+df = pd.read_csv("train.csv", low_memory=False)
 
 # date format
 df['Date'] = pd.to_datetime(df['Date'])
@@ -120,11 +120,11 @@ features = [
 df_model = df[features + ['Sales']].dropna()
 
 # save file
-df_model.to_csv("data/processed/xgboost_store_1.csv", index=False)
+df_model.to_csv("xgboost_store_1.csv", index=False)
 
 
 # load xgboost data
-df = pd.read_csv("data/processed/xgboost_store_1.csv")
+df = pd.read_csv("xgboost_store_1.csv")
 
 X = df.drop(columns=['Sales'])
 y = df['Sales']
