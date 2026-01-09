@@ -65,10 +65,22 @@ for col in holiday_cols:
 
 
 # forecasting model
-forecast = model.predict(future)
-model.plot(forecast)
-plt.title(f"Prophet Forecast for Store {store_id}")
+fig = model.plot(forecast)
+# Get the axes
+ax = fig.gca()
+# Add labels
+ax.set_xlabel("Date")
+ax.set_ylabel("Sales")
+
+# Manually add legend
+ax.legend(
+    ["Observed", "Trend", "Weekly Seasonality", "Yearly Seasonality"],
+    loc="best"
+)
+
+plt.title("Prophet Forecast for Store 1")
 plt.show()
+
 
 
 #xgboost features
@@ -165,19 +177,25 @@ print(inventory_df.head())
 
 # actual vs predicted
 plt.figure(figsize=(12, 5))
-plt.plot(y_test.values, label="actual sales")
-plt.plot(y_pred, label="predicted sales")
+plt.plot(y_test.values, label="Actual Sales")
+plt.plot(y_pred, label="Predicted Sales")
+plt.xlabel("Time Index")
+plt.ylabel("Sales")
 plt.legend()
-plt.title("xgboost prediction")
+plt.title("XGBoost Sales Prediction")
 plt.show()
+
 
 # demand vs inventory
 plt.figure(figsize=(12, 5))
-plt.plot(inventory_df["forecasted_demand"].values, label="forecasted demand")
-plt.plot(inventory_df["inventory_required"].values, label="inventory required")
+plt.plot(inventory_df["forecasted_demand"].values, label="Forecasted Demand")
+plt.plot(inventory_df["inventory_required"].values, label="Inventory Required")
+plt.xlabel("Time index")
+plt.ylabel("Units")
 plt.legend()
-plt.title("inventory planning")
+plt.title("Inventory Planning")
 plt.show()
+
 
 # feature importance
 importance = pd.Series(
@@ -186,5 +204,7 @@ importance = pd.Series(
 ).sort_values(ascending=False)
 
 importance.head(10).plot(kind='bar')
-plt.title("feature importance")
+plt.xlabel("Features")
+plt.ylabel("Importance Score")
+plt.title("XGBoost Feature Importance")
 plt.show()
