@@ -8,7 +8,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 
 # load raw data
-df = pd.read_csv("train.csv")
+df = pd.read_csv("../train.csv")
 
 # convert date
 df['Date'] = pd.to_datetime(df['Date'])
@@ -34,8 +34,8 @@ df = pd.get_dummies(df, columns=['StateHoliday'])
 holiday_cols = [c for c in df.columns if c.startswith('StateHoliday_')]
 df[holiday_cols] = df[holiday_cols].astype(int)
 
-df.info()
-#prophet model 
+
+#prophet model
 
 # prepare prophet data
 prophet_df = df[['Date', 'Sales'] + holiday_cols].rename(
@@ -63,6 +63,9 @@ future = model.make_future_dataframe(periods=90)
 for col in holiday_cols:
     future[col] = 0
 
+# predict
+forecast = model.predict(future)
+
 
 # forecasting model
 fig = model.plot(forecast)
@@ -85,7 +88,7 @@ plt.show()
 
 #xgboost features
 
-#to create DATE-based features
+#to create date-based features
 df['day'] = df['Date'].dt.day
 df['week'] = df['Date'].dt.isocalendar().week.astype(int)
 df['month'] = df['Date'].dt.month
@@ -96,7 +99,7 @@ df['is_weekend'] = df['day_of_week'].isin([5,6]).astype(int)
 df[['Date','day_of_week','is_weekend']].head()
 
 
-#to create LAG features
+#to create lag features
 df['sales_lag_1'] = df['Sales'].shift(1)
 df['sales_lag_7'] = df['Sales'].shift(7)
 df['sales_lag_14'] = df['Sales'].shift(14)
