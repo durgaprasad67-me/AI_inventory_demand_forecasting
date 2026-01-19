@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,140 +7,109 @@ from prophet import Prophet
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-
-# load raw data
-df = pd.read_csv("../train.csv")
-
-# convert date
+#Loading Data
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "train.csv")
+df = pd.read_csv(DATA_PATH)
+# Convert date
 df['Date'] = pd.to_datetime(df['Date'])
 
-# sort by date
+# Sort by date
 df = df.sort_values('Date')
-
-# use only one store
 df = df[df['Store'] == 1]
-
-# remove closed days
 df = df[df['Open'] == 1]
-
-
-# clean state holiday
+# Clean StateHoliday
 df['StateHoliday'] = df['StateHoliday'].astype(str)
 df['StateHoliday'] = df['StateHoliday'].replace('0', 'none')
 
-#  encoding  to convert into categorial values.
+# converting string to boolean 
 df = pd.get_dummies(df, columns=['StateHoliday'])
 
-# holiday columns
+# Holiday columns
 holiday_cols = [c for c in df.columns if c.startswith('StateHoliday_')]
 df[holiday_cols] = df[holiday_cols].astype(int)
 
 
-#prophet model
-
-# prepare prophet data
+#  PROPHET MODEL
+# Prepare Prophet dataframe
 prophet_df = df[['Date', 'Sales'] + holiday_cols].rename(
     columns={'Date': 'ds', 'Sales': 'y'}
 )
 
-# build prophet model
+# Build Prophet model
 model = Prophet(
     weekly_seasonality=True,
     yearly_seasonality=True,
     daily_seasonality=False
 )
 
-# add holiday effects
+# Add holiday regressors
 for col in holiday_cols:
     model.add_regressor(col)
 
-# train prophet
+# Train Prophet
 model.fit(prophet_df)
 
-# future prediction
+# Future dataframe
 future = model.make_future_dataframe(periods=90)
 
-# assume no holidays in future
+# Assume no holidays in future
 for col in holiday_cols:
     future[col] = 0
 
-# predict
+# Forecast
 forecast = model.predict(future)
 
-
-# forecasting model
+# Plot Prophet forecast
 fig = model.plot(forecast)
-# Get the axes
 ax = fig.gca()
-# Add labels
 ax.set_xlabel("Date")
 ax.set_ylabel("Sales")
-
-# Manually add legend
-ax.legend(
-    ["Observed", "Trend", "Weekly Seasonality", "Yearly Seasonality"],
-    loc="best"
-)
-
 plt.title("Prophet Forecast for Store 1")
 plt.show()
 
+#features extraction for xgboost.
 
-
-#xgboost features
-
-#to create date-based features
 df['day'] = df['Date'].dt.day
 df['week'] = df['Date'].dt.isocalendar().week.astype(int)
 df['month'] = df['Date'].dt.month
 df['year'] = df['Date'].dt.year
 df['day_of_week'] = df['Date'].dt.dayofweek
-df['is_weekend'] = df['day_of_week'].isin([5,6]).astype(int)
+df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
 
-df[['Date','day_of_week','is_weekend']].head()
-
-
-#to create lag features
+# Lag features
 df['sales_lag_1'] = df['Sales'].shift(1)
 df['sales_lag_7'] = df['Sales'].shift(7)
 df['sales_lag_14'] = df['Sales'].shift(14)
 df['sales_lag_28'] = df['Sales'].shift(28)
 
-#smooths noise for better inventory decision
+# Rolling means
 df['rolling_mean_7'] = df['Sales'].rolling(7).mean()
 df['rolling_mean_14'] = df['Sales'].rolling(14).mean()
 df['rolling_mean_28'] = df['Sales'].rolling(28).mean()
 
-# to Select final features
-# Update the features list to include only the actually created StateHoliday columns
-base_features = [
+# Feature list
+features = [
     'day', 'week', 'month', 'year',
     'day_of_week', 'is_weekend',
     'Promo',
     'sales_lag_1', 'sales_lag_7', 'sales_lag_14', 'sales_lag_28',
     'rolling_mean_7', 'rolling_mean_14', 'rolling_mean_28'
 ]
-features = base_features
 
-df_model = df[features + ['Sales']]
-
-#Lag & rolling features create NaNs at the start.
-df_model = df_model.dropna()
-df_model.head()
+df_model = df[features + ['Sales']].dropna()
 
 
-#xgboost model
-
+#  XGBOOST MODEL
 X = df_model.drop(columns=['Sales'])
 y = df_model['Sales']
 
-# train and  test dataset split
+# Train-test split 
 split = int(len(df_model) * 0.8)
-
 X_train, X_test = X.iloc[:split], X.iloc[split:]
 y_train, y_test = y.iloc[:split], y.iloc[split:]
 
-# build xgboost
+# Build model
 xgb_model = XGBRegressor(
     n_estimators=200,
     learning_rate=0.05,
@@ -147,26 +117,22 @@ xgb_model = XGBRegressor(
     random_state=42
 )
 
-# train model
+# Train
 xgb_model.fit(X_train, y_train)
 
-# predict sales
+# Predict
 y_pred = xgb_model.predict(X_test)
 y_pred_series = pd.Series(y_pred, index=y_test.index)
 
-# model performance
+# Metrics
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 mae = mean_absolute_error(y_test, y_pred)
 
-print("rmse:", rmse)
-print("mae :", mae)
+print("RMSE:", rmse)
+print("MAE :", mae)
 
-
-
-# safety stock (10%)
+# Safety stock (10%)
 safety_stock = 0.10 * y_pred_series
-
-# total inventory
 inventory_required = y_pred_series + safety_stock
 
 inventory_df = pd.DataFrame({
@@ -178,7 +144,7 @@ inventory_df = pd.DataFrame({
 print(inventory_df.head())
 
 
-# actual vs predicted
+# Actual vs Predicted
 plt.figure(figsize=(12, 5))
 plt.plot(y_test.values, label="Actual Sales")
 plt.plot(y_pred, label="Predicted Sales")
@@ -188,19 +154,17 @@ plt.legend()
 plt.title("XGBoost Sales Prediction")
 plt.show()
 
-
-# demand vs inventory
+# Inventory Planning
 plt.figure(figsize=(12, 5))
 plt.plot(inventory_df["forecasted_demand"].values, label="Forecasted Demand")
 plt.plot(inventory_df["inventory_required"].values, label="Inventory Required")
-plt.xlabel("Time index")
+plt.xlabel("Time Index")
 plt.ylabel("Units")
 plt.legend()
 plt.title("Inventory Planning")
 plt.show()
 
-
-# feature importance
+# Feature Importance
 importance = pd.Series(
     xgb_model.feature_importances_,
     index=X.columns
@@ -208,6 +172,6 @@ importance = pd.Series(
 
 importance.head(10).plot(kind='bar')
 plt.xlabel("Features")
-plt.ylabel("Importance Score")
+plt.ylabel("Importance")
 plt.title("XGBoost Feature Importance")
 plt.show()
