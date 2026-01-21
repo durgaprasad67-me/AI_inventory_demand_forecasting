@@ -7,7 +7,7 @@ from prophet import Prophet
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-#Loading Data
+#loading Data
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "train.csv")
 df = pd.read_csv(DATA_PATH)
@@ -18,20 +18,19 @@ df['Date'] = pd.to_datetime(df['Date'])
 df = df.sort_values('Date')
 df = df[df['Store'] == 1]
 df = df[df['Open'] == 1]
-# Clean StateHoliday
+
+
 df['StateHoliday'] = df['StateHoliday'].astype(str)
 df['StateHoliday'] = df['StateHoliday'].replace('0', 'none')
 
 # converting string to boolean 
 df = pd.get_dummies(df, columns=['StateHoliday'])
-
-# Holiday columns
 holiday_cols = [c for c in df.columns if c.startswith('StateHoliday_')]
 df[holiday_cols] = df[holiday_cols].astype(int)
 
 
 #  PROPHET MODEL
-# Prepare Prophet dataframe
+# preparing Prophet dataframe
 prophet_df = df[['Date', 'Sales'] + holiday_cols].rename(
     columns={'Date': 'ds', 'Sales': 'y'}
 )
@@ -49,18 +48,14 @@ for col in holiday_cols:
 
 # Train Prophet
 model.fit(prophet_df)
-
 # Future dataframe
 future = model.make_future_dataframe(periods=90)
-
-# Assume no holidays in future
 for col in holiday_cols:
     future[col] = 0
 
-# Forecast
 forecast = model.predict(future)
 
-# Plot Prophet forecast
+# plotting Prophet forecast
 fig = model.plot(forecast)
 ax = fig.gca()
 ax.set_xlabel("Date")
@@ -88,7 +83,7 @@ df['rolling_mean_7'] = df['Sales'].rolling(7).mean()
 df['rolling_mean_14'] = df['Sales'].rolling(14).mean()
 df['rolling_mean_28'] = df['Sales'].rolling(28).mean()
 
-# Feature list
+# feature list
 features = [
     'day', 'week', 'month', 'year',
     'day_of_week', 'is_weekend',
@@ -124,14 +119,25 @@ xgb_model.fit(X_train, y_train)
 y_pred = xgb_model.predict(X_test)
 y_pred_series = pd.Series(y_pred, index=y_test.index)
 
-# Metrics
+# error metrics
 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 mae = mean_absolute_error(y_test, y_pred)
 
-print("RMSE:", rmse)
-print("MAE :", mae)
+prophet_test_data = df.loc[y_test.index, ['Date'] + holiday_cols].rename(columns={'Date': 'ds'})
 
-# Safety stock (10%)
+prophet_test_forecast = model.predict(prophet_test_data)
+y_prophet_pred = prophet_test_forecast['yhat'].values 
+
+# Calculating Prophet's error scores
+p_rmse = np.sqrt(mean_squared_error(y_test, y_prophet_pred))
+p_mae = mean_absolute_error(y_test, y_prophet_pred)
+
+print("\n--- Comparison Table ---")
+print(f"XGBoost | RMSE: {rmse:.2f} | MAE: {mae:.2f}")
+print(f"Prophet | RMSE: {p_rmse:.2f} | MAE: {p_mae:.2f}")
+
+
+# Safety stock 
 safety_stock = 0.10 * y_pred_series
 inventory_required = y_pred_series + safety_stock
 
@@ -154,7 +160,7 @@ plt.legend()
 plt.title("XGBoost Sales Prediction")
 plt.show()
 
-# Inventory Planning
+# Inventory planning
 plt.figure(figsize=(12, 5))
 plt.plot(inventory_df["forecasted_demand"].values, label="Forecasted Demand")
 plt.plot(inventory_df["inventory_required"].values, label="Inventory Required")
