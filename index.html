@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Powered Inventory Demand Forecasting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    height: 100vh;
+    background-color:#b6cdea;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+.left-panel {
+    width: 30%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.right-panel {
+    width: 70%;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.box {
+    border: 2px dashed white;
+    border-radius: 25px;
+    width: 250px;
+    height: 250px;
+    background-color: rgb(246, 251, 252);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.box img {
+    width: 160px;
+}
+
+.upload-text {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.file-name {
+    margin-top: 6px;
+    font-size: 13px;
+    text-align: center;
+    word-break: break-all;
+}
+
+
+.clear-btn {
+    margin-top: 12px;
+    padding: 6px 16px;
+    background: white;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border: none;
+}
+
+
+.plot-card {
+    background: white;
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+table {
+    background: white;
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: center;
+}
+
+.download-btn {
+    display: inline-block;
+    padding: 10px 15px;
+    background: white;
+    border-radius: 10px;
+    text-decoration: none;
+    color: black;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="left-panel">
+    <label class="box">
+        <img src="/static/Upload_icon.png" alt="Upload CSV">
+        <p class="upload-text" id="uploadText">Upload a CSV file</p>
+        <p class="file-name" id="fileName"></p>
+        <input type="file" id="fileInput" accept=".csv" hidden>
+    </label>
+
+
+    <button class="clear-btn" onclick="clearAll()">Clear</button>
+</div>
+
+<div class="right-panel" id="results">
+    <h2 style="color:white;">Upload a CSV file to view forecasts and inventory planning</h2>
+</div>
+
+</div>
+
+<script>
+const fileInput = document.getElementById("fileInput");
+const fileNameText = document.getElementById("fileName");
+const uploadText = document.getElementById("uploadText");
+const results = document.getElementById("results");
+
+fileInput.addEventListener("change", () => {
+    if (fileInput.files.length === 0) return;
+
+    const file = fileInput.files[0];
+    const name = file.name.toLowerCase();
+
+    if (!name.endsWith(".csv")) {
+        fileNameText.textContent = "The file isn't .csv";
+        fileNameText.style.color = "red";
+        uploadText.textContent = "Upload a CSV file";
+        fileInput.value = "";
+        return;
+    }
+
+    fileNameText.textContent = file.name;
+    fileNameText.style.color = "green";
+    uploadText.textContent = "Selected file:";
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    results.innerHTML = `<h2 style="color:white;">Processing... please wait</h2>`;
+
+    fetch("/upload", { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                results.innerHTML = `<h2 style="color:white;">${data.error}</h2>`;
+                return;
+            }
+
+            results.innerHTML = `
+                <h2 style="color:white;">Model Performance Metrics</h2>
+                <table>
+                    <tr><th>Model</th><th>RMSE</th><th>MAE</th></tr>
+                    <tr><td>XGBoost</td><td>${data.rmse.toFixed(2)}</td><td>${data.mae.toFixed(2)}</td></tr>
+                    <tr><td>Prophet</td><td>${data.p_rmse.toFixed(2)}</td><td>${data.p_mae.toFixed(2)}</td></tr>
+                </table>
+
+                <a href="/download_inventory" class="download-btn">Download Inventory CSV</a>
+
+                <div class="plot-card"><h3>Prophet vs XGBoost</h3><img src="${data.plots.comparison}" width="100%"></div>
+                <div class="plot-card"><h3>Inventory Planning</h3><img src="${data.plots.inventory}" width="100%"></div>
+                <div class="plot-card"><h3>Prophet Forecast</h3><img src="${data.plots.prophet}" width="100%"></div>
+            `;
+        });
+});
+
+function clearAll() {
+    fileInput.value = "";
+    fileNameText.textContent = "";
+    uploadText.textContent = "Upload a CSV file";
+    uploadText.style.color = "black";
+
+    results.innerHTML = `
+        <h2 style="color:white;">
+            Upload a CSV file to view forecasts and inventory planning
+        </h2>
+    `;
+}
+</script>
+
+</body>
+</html>
