@@ -10,14 +10,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from scipy.stats import zscore
 
 app = Flask(__name__, static_folder="static")
 
 PLOT_DIR = "static/plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
-
 INVENTORY_CSV = "static/inventory.csv"
-
 
 
 @app.route("/")
@@ -51,7 +50,7 @@ def upload():
     holiday_cols = [c for c in df.columns if c.startswith("StateHoliday_")]
     df[holiday_cols] = df[holiday_cols].astype(int)
 
-    # prophet
+    #prophet
     prophet_df = df[["Date", "Sales"] + holiday_cols].rename(
         columns={"Date": "ds", "Sales": "y"}
     )
@@ -68,13 +67,14 @@ def upload():
 
     forecast = prophet.predict(future)
 
-    fig = prophet.plot(forecast)
+    plt.figure()
+    prophet.plot(forecast)
     plt.title("Prophet Forecast")
-    plt.tight_layout()
     plt.savefig(f"{PLOT_DIR}/prophet_forecast.png")
     plt.close()
 
-    # xgboost
+
+    # XGBOOST model
     df["day"] = df["Date"].dt.day
     df["week"] = df["Date"].dt.isocalendar().week.astype(int)
     df["month"] = df["Date"].dt.month
@@ -97,7 +97,8 @@ def upload():
         "rolling_mean_7","rolling_mean_14","rolling_mean_28"
     ]
 
-    df_model = df[["Date"] + features + ["Sales"]].dropna()
+
+    df_model = df[features + ["Sales", "Date"]].dropna()
 
     split = int(len(df_model) * 0.8)
     X = df_model[features]
@@ -118,22 +119,23 @@ def upload():
     prophet_test = df.loc[y_test.index, ["Date"] + holiday_cols].rename(columns={"Date": "ds"})
     prophet_pred = prophet.predict(prophet_test)["yhat"].values
 
+
     p_rmse = float(np.sqrt(mean_squared_error(y_test, prophet_pred)))
     p_mae = float(mean_absolute_error(y_test, prophet_pred))
 
-    # comparison plots
-    plt.figure(figsize=(10,4))
-    plt.plot(y_test.values, label="Actual")
-    plt.plot(y_pred, label="XGBoost")
-    plt.plot(prophet_pred, label="Prophet")
-    plt.legend()
-    plt.title("Prophet vs XGBoost")
-    plt.tight_layout()
-    plt.savefig(f"{PLOT_DIR}/comparison.png")
-    plt.close()
+    # AI model selection
+    best_model = "XGBoost" if rmse < p_rmse else "Prophet"
 
-    # inventory
-    safety_stock = 0.10 * y_pred
+    # adaptive stock
+    error_ratio = rmse / y_test.mean()
+    if error_ratio > 0.25:
+        safety_rate = 0.20
+    elif error_ratio > 0.15:
+        safety_rate = 0.15
+    else:
+        safety_rate = 0.10
+
+    safety_stock = y_pred * safety_rate
     inventory_required = y_pred + safety_stock
 
     inventory_df = pd.DataFrame({
@@ -142,24 +144,52 @@ def upload():
         "Safety_Stock": safety_stock,
         "Inventory_Required": inventory_required
     })
-
     inventory_df.to_csv(INVENTORY_CSV, index=False)
 
+    # anomolies detection 
+    z_scores = zscore(df["Sales"].dropna())
+    anomalies = df.iloc[np.where(np.abs(z_scores) > 3)][["Date", "Sales"]]
+
+    anomaly_msg = (
+        f"{len(anomalies)} demand anomalies detected"
+        if len(anomalies) > 0 else
+        "No demand anomalies detected"
+    )
+
+    # insights
+    insights = [
+        f"AI selected {best_model} as the best model based on lower error",
+        f"Adaptive safety stock set to {int(safety_rate*100)}%",
+        anomaly_msg
+    ]
+
+    # comparison plots
     plt.figure(figsize=(10,4))
-    plt.plot(test_dates, inventory_df["Forecasted_Demand"], label="Forecasted Demand")
-    plt.plot(test_dates, inventory_df["Inventory_Required"], label="Inventory Required")
+    plt.plot(y_test.values, label="Actual")
+    plt.plot(y_pred, label="XGBoost")
+    plt.plot(prophet_pred, label="Prophet")
     plt.legend()
-    plt.title("Inventory Planning")
-    plt.tight_layout()
+    plt.title("Model Comparison")
+    plt.savefig(f"{PLOT_DIR}/comparison.png")
+    plt.close()
+
+    
+    # plots inventory
+    plt.figure(figsize=(10,4))
+    plt.plot(test_dates, inventory_required, label="Inventory Required")
+    plt.plot(test_dates, y_pred, label="Forecasted Demand")
+    plt.legend()
+    plt.title("AI Inventory Planning")
     plt.savefig(f"{PLOT_DIR}/inventory.png")
     plt.close()
 
-    # json response
     return jsonify({
         "rmse": rmse,
         "mae": mae,
         "p_rmse": p_rmse,
         "p_mae": p_mae,
+        "best_model": best_model,
+        "insights": insights,
         "plots": {
             "comparison": "/static/plots/comparison.png",
             "inventory": "/static/plots/inventory.png",
@@ -174,4 +204,4 @@ def download_inventory():
 
 
 if __name__ == "__main__":
-    app.run(debug=False, use_reloader=False)
+    app.run(debug=False)
