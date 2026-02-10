@@ -1,7 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
 <title>AI Powered Inventory Demand Forecasting</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -103,98 +102,94 @@ th, td {
     font-weight: bold;
     margin-bottom: 20px;
 }
+.card { background:white; 
+        padding:15px;
+        border-radius:12px; 
+        margin-bottom:15px; 
+}
 </style>
 </head>
 
 <body>
-
 <div class="container">
-
 <div class="left-panel">
-    <label class="box">
-        <img src="/static/Upload_icon.png" alt="Upload CSV">
+<label class="box">
+    <img src="/static/Upload_icon.png" alt="Upload CSV">
         <p class="upload-text" id="uploadText">Upload a CSV file</p>
         <p class="file-name" id="fileName"></p>
         <input type="file" id="fileInput" accept=".csv" hidden>
-    </label>
-
-
-    <button class="clear-btn" onclick="clearAll()">Clear</button>
+</label>
+<button class="clear-btn" onclick="clearAll()">Clear</button>
 </div>
 
 <div class="right-panel" id="results">
-    <h2 style="color:white;">Upload a CSV file to view forecasts and inventory planning</h2>
+<h2 style="color:white">Upload CSV to start AI analysis</h2>
 </div>
-
 </div>
 
 <script>
-const fileInput = document.getElementById("fileInput");
-const fileNameText = document.getElementById("fileName");
+const input = document.getElementById("fileInput");
+const nameText = document.getElementById("fileName");
 const uploadText = document.getElementById("uploadText");
 const results = document.getElementById("results");
 
-fileInput.addEventListener("change", () => {
-    if (fileInput.files.length === 0) return;
+input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file || !file.name.endsWith(".csv")) return;
 
-    const file = fileInput.files[0];
-    const name = file.name.toLowerCase();
-
-    if (!name.endsWith(".csv")) {
-        fileNameText.textContent = "The file isn't .csv";
-        fileNameText.style.color = "red";
-        uploadText.textContent = "Upload a CSV file";
-        fileInput.value = "";
-        return;
-    }
-
-    fileNameText.textContent = file.name;
-    fileNameText.style.color = "green";
+    nameText.textContent = file.name;
+    nameText.style.color = "green";
     uploadText.textContent = "Selected file:";
 
-    const formData = new FormData();
-    formData.append("file", file);
+    const fd = new FormData();
+    fd.append("file", file);
 
-    results.innerHTML = `<h2 style="color:white;">Processing... please wait</h2>`;
+    results.innerHTML = "<h2 style='color:white'>Processing... please wait</h2>";
 
-    fetch("/upload", { method: "POST", body: formData })
+    fetch("/upload", { method: "POST", body: fd })
         .then(res => res.json())
-        .then(data => {
-            if (data.error) {
-                results.innerHTML = `<h2 style="color:white;">${data.error}</h2>`;
+        .then(d => {
+            if (d.error) {
+                results.innerHTML = `<h2 style="color:white;">${d.error}</h2>`;
                 return;
             }
 
             results.innerHTML = `
-                <h2 style="color:white;">Model Performance Metrics</h2>
-                <table>
-                    <tr><th>Model</th><th>RMSE</th><th>MAE</th></tr>
-                    <tr><td>XGBoost</td><td>${data.rmse.toFixed(2)}</td><td>${data.mae.toFixed(2)}</td></tr>
-                    <tr><td>Prophet</td><td>${data.p_rmse.toFixed(2)}</td><td>${data.p_mae.toFixed(2)}</td></tr>
-                </table>
+                <div class="card">
+                    <h3>AI Decision</h3>
+                    <b>Best Model:</b> ${d.best_model}
+                    <ul>${d.insights.map(i => `<li>${i}</li>`).join("")}</ul>
+                </div>
+
+                <div class="card">
+                    <table>
+                        <tr><th>Model</th><th>RMSE</th><th>MAE</th></tr>
+                        <tr><td>XGBoost</td><td>${d.rmse.toFixed(2)}</td><td>${d.mae.toFixed(2)}</td></tr>
+                        <tr><td>Prophet</td><td>${d.p_rmse.toFixed(2)}</td><td>${d.p_mae.toFixed(2)}</td></tr>
+                    </table>
+                </div>
 
                 <a href="/download_inventory" class="download-btn">Download Inventory CSV</a>
 
-                <div class="plot-card"><h3>Prophet vs XGBoost</h3><img src="${data.plots.comparison}" width="100%"></div>
-                <div class="plot-card"><h3>Inventory Planning</h3><img src="${data.plots.inventory}" width="100%"></div>
-                <div class="plot-card"><h3>Prophet Forecast</h3><img src="${data.plots.prophet}" width="100%"></div>
+                <div class="card"><img src="${d.plots.comparison}" width="100%"></div>
+                <div class="card"><img src="${d.plots.inventory}" width="100%"></div>
+                <div class="card"><img src="${d.plots.prophet}" width="100%"></div>
             `;
         });
 });
 
 function clearAll() {
-    fileInput.value = "";
-    fileNameText.textContent = "";
+    input.value = "";
+    nameText.textContent = "";
+    nameText.style.color = "black";
     uploadText.textContent = "Upload a CSV file";
-    uploadText.style.color = "black";
 
     results.innerHTML = `
-        <h2 style="color:white;">
-            Upload a CSV file to view forecasts and inventory planning
+        <h2 style="color:white">
+            Upload CSV to start AI analysis
         </h2>
     `;
 }
 </script>
-
 </body>
 </html>
