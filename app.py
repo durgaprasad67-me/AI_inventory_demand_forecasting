@@ -5,55 +5,84 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib
 matplotlib.use("Agg")
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy.stats import zscore
+from io import BytesIO
+import jwt
 
-app = Flask(__name__, static_folder="static")
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 PLOT_DIR = "static/plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
 INVENTORY_CSV = "static/inventory.csv"
 
 
-@app.route("/")
+@app.get("/")
 def index():
-    return send_from_directory("static", "index.html")
+    if not os.path.exists("static/index.html"):
+        raise HTTPException(status_code=404, detail="Frontend file not found")
+    return FileResponse("static/index.html")
 
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    file = request.files["file"]
-    df = pd.read_csv(file, low_memory=False)
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    contents = await file.read()
+    try:
+        df = pd.read_csv(BytesIO(contents), low_memory=False)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid CSV file")
     df.columns = df.columns.str.strip()
 
     if "Date" not in df.columns or "Sales" not in df.columns:
-        return jsonify({"error": "CSV must contain Date and Sales columns"}), 400
+        raise HTTPException(status_code=400, detail="CSV must contain Date and Sales columns")
 
-    df["Date"] = pd.to_datetime(df["Date"])
+    try:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Date values in CSV")
+    df["Sales"] = pd.to_numeric(df["Sales"], errors="coerce")
+    df = df.dropna(subset=["Date", "Sales"]).copy()
+    if df.empty:
+        raise HTTPException(status_code=400, detail="CSV has no valid Date/Sales rows")
     df = df.sort_values("Date")
 
     if "Store" in df.columns:
+        df["Store"] = pd.to_numeric(df["Store"], errors="coerce")
         df = df[df["Store"] == 1]
     if "Open" in df.columns:
+        df["Open"] = pd.to_numeric(df["Open"], errors="coerce")
         df = df[df["Open"] == 1]
     if "Promo" not in df.columns:
         df["Promo"] = 0
+    df["Promo"] = pd.to_numeric(df["Promo"], errors="coerce").fillna(0).astype(int)
     if "StateHoliday" not in df.columns:
         df["StateHoliday"] = "none"
+
+    if df.empty:
+        raise HTTPException(status_code=400, detail="No rows left after filtering")
 
     df["StateHoliday"] = df["StateHoliday"].astype(str).replace("0", "none")
     df = pd.get_dummies(df, columns=["StateHoliday"])
     holiday_cols = [c for c in df.columns if c.startswith("StateHoliday_")]
     df[holiday_cols] = df[holiday_cols].astype(int)
 
-    #prophet
+    # prophet
     prophet_df = df[["Date", "Sales"] + holiday_cols].rename(
         columns={"Date": "ds", "Sales": "y"}
     )
+    prophet_df = prophet_df.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(prophet_df) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough valid rows for Prophet training after cleaning.",
+        )
 
     prophet = Prophet(weekly_seasonality=True, yearly_seasonality=True)
     for col in holiday_cols:
@@ -73,7 +102,6 @@ def upload():
     plt.savefig(f"{PLOT_DIR}/prophet_forecast.png")
     plt.close()
 
-
     # XGBOOST model
     df["day"] = df["Date"].dt.day
     df["week"] = df["Date"].dt.isocalendar().week.astype(int)
@@ -92,15 +120,22 @@ def upload():
     df["rolling_mean_28"] = df["Sales"].rolling(28).mean()
 
     features = [
-        "day","week","month","year","day_of_week","is_weekend","Promo",
-        "sales_lag_1","sales_lag_7","sales_lag_14","sales_lag_28",
-        "rolling_mean_7","rolling_mean_14","rolling_mean_28"
+        "day", "week", "month", "year", "day_of_week", "is_weekend", "Promo",
+        "sales_lag_1", "sales_lag_7", "sales_lag_14", "sales_lag_28",
+        "rolling_mean_7", "rolling_mean_14", "rolling_mean_28"
     ]
 
-
     df_model = df[features + ["Sales", "Date"]].dropna()
+    if len(df_model) < 20:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough usable rows after feature engineering. Provide more historical data.",
+        )
 
     split = int(len(df_model) * 0.8)
+    test_size = len(df_model) - split
+    if split < 10 or test_size < 2:
+        raise HTTPException(status_code=400, detail="Could not create train/test split from data")
     X = df_model[features]
     y = df_model["Sales"]
 
@@ -111,6 +146,7 @@ def upload():
     xgb = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, random_state=42)
     xgb.fit(X_train, y_train)
     y_pred = xgb.predict(X_test)
+    y_pred_non_negative = np.maximum(y_pred, 0)
 
     # metrics
     rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
@@ -119,7 +155,6 @@ def upload():
     prophet_test = df.loc[y_test.index, ["Date"] + holiday_cols].rename(columns={"Date": "ds"})
     prophet_pred = prophet.predict(prophet_test)["yhat"].values
 
-
     p_rmse = float(np.sqrt(mean_squared_error(y_test, prophet_pred)))
     p_mae = float(mean_absolute_error(y_test, prophet_pred))
 
@@ -127,7 +162,8 @@ def upload():
     best_model = "XGBoost" if rmse < p_rmse else "Prophet"
 
     # adaptive stock
-    error_ratio = rmse / y_test.mean()
+    y_test_mean = abs(float(y_test.mean()))
+    error_ratio = rmse / y_test_mean if y_test_mean != 0 else 0.0
     if error_ratio > 0.25:
         safety_rate = 0.20
     elif error_ratio > 0.15:
@@ -135,20 +171,66 @@ def upload():
     else:
         safety_rate = 0.10
 
-    safety_stock = y_pred * safety_rate
-    inventory_required = y_pred + safety_stock
+    safety_stock = y_pred_non_negative * safety_rate
+    inventory_required = y_pred_non_negative + safety_stock
 
     inventory_df = pd.DataFrame({
         "Date": test_dates.values,
-        "Forecasted_Demand": y_pred,
+        "Forecasted_Demand": y_pred_non_negative,
         "Safety_Stock": safety_stock,
         "Inventory_Required": inventory_required
     })
     inventory_df.to_csv(INVENTORY_CSV, index=False)
 
-    # anomolies detection 
-    z_scores = zscore(df["Sales"].dropna())
-    anomalies = df.iloc[np.where(np.abs(z_scores) > 3)][["Date", "Sales"]]
+    # anomalies detection
+    sales_non_null = df["Sales"].dropna()
+    sales_std = float(sales_non_null.std(ddof=0)) if len(sales_non_null) else 0.0
+    if sales_std == 0.0 or np.isnan(sales_std):
+        anomalies = df.iloc[0:0][["Date", "Sales"]]
+    else:
+        z_scores = pd.Series(zscore(sales_non_null), index=sales_non_null.index)
+        anomalies = df.loc[z_scores[np.abs(z_scores) > 3].index, ["Date", "Sales"]]
+
+    # AI business layer: demand risk + reorder recommendation
+    pred_mean = abs(float(np.mean(y_pred_non_negative))) if len(y_pred_non_negative) else 0.0
+    pred_std = float(np.std(y_pred_non_negative)) if len(y_pred_non_negative) else 0.0
+    forecast_volatility = (pred_std / pred_mean) if pred_mean != 0 else 0.0
+    anomaly_ratio = (len(anomalies) / len(df)) if len(df) else 0.0
+
+    error_component = min(error_ratio / 0.30, 1.0) * 40
+    volatility_component = min(forecast_volatility / 0.50, 1.0) * 35
+    anomaly_component = min(anomaly_ratio / 0.10, 1.0) * 25
+    risk_score = int(round(error_component + volatility_component + anomaly_component))
+    risk_score = max(0, min(100, risk_score))
+
+    if risk_score >= 67:
+        risk_level = "High"
+        lead_time_days = 14
+    elif risk_score >= 34:
+        risk_level = "Medium"
+        lead_time_days = 10
+    else:
+        risk_level = "Low"
+        lead_time_days = 7
+
+    avg_daily_demand = float(df_model["Sales"].tail(30).mean())
+    avg_safety_stock = float(np.mean(safety_stock)) if len(safety_stock) else 0.0
+    reorder_point = (avg_daily_demand * lead_time_days) + avg_safety_stock
+
+    horizon_days = min(14, len(y_pred_non_negative))
+    next_14_day_demand = float(np.sum(y_pred_non_negative[:horizon_days]))
+    recommended_order_qty = next_14_day_demand + avg_safety_stock
+
+    feature_importances = []
+    for feat, imp in zip(features, xgb.feature_importances_):
+        feature_importances.append({"feature": feat, "importance": float(imp)})
+    top_drivers = sorted(feature_importances, key=lambda x: x["importance"], reverse=True)[:5]
+
+    ai_summary = (
+        f"Demand risk is {risk_level} ({risk_score}/100). "
+        f"Reorder when stock falls below {reorder_point:.0f} units. "
+        f"Suggested order quantity for the next 14 days is {recommended_order_qty:.0f} units."
+    )
 
     anomaly_msg = (
         f"{len(anomalies)} demand anomalies detected"
@@ -159,12 +241,13 @@ def upload():
     # insights
     insights = [
         f"AI selected {best_model} as the best model based on lower error",
-        f"Adaptive safety stock set to {int(safety_rate*100)}%",
-        anomaly_msg
+        f"Adaptive safety stock set to {int(safety_rate * 100)}%",
+        anomaly_msg,
+        ai_summary
     ]
 
     # comparison plots
-    plt.figure(figsize=(10,4))
+    plt.figure(figsize=(10, 4))
     plt.plot(y_test.values, label="Actual")
     plt.plot(y_pred, label="XGBoost")
     plt.plot(prophet_pred, label="Prophet")
@@ -173,35 +256,48 @@ def upload():
     plt.savefig(f"{PLOT_DIR}/comparison.png")
     plt.close()
 
-    
     # plots inventory
-    plt.figure(figsize=(10,4))
+    plt.figure(figsize=(10, 4))
     plt.plot(test_dates, inventory_required, label="Inventory Required")
-    plt.plot(test_dates, y_pred, label="Forecasted Demand")
+    plt.plot(test_dates, y_pred_non_negative, label="Forecasted Demand")
     plt.legend()
     plt.title("AI Inventory Planning")
     plt.savefig(f"{PLOT_DIR}/inventory.png")
     plt.close()
 
-    return jsonify({
+    return {
         "rmse": rmse,
         "mae": mae,
         "p_rmse": p_rmse,
         "p_mae": p_mae,
         "best_model": best_model,
         "insights": insights,
+        "ai": {
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "lead_time_days": lead_time_days,
+            "reorder_point": round(reorder_point, 2),
+            "recommended_order_qty": round(recommended_order_qty, 2),
+            "next_14_day_demand": round(next_14_day_demand, 2),
+            "top_drivers": top_drivers,
+            "summary": ai_summary
+        },
         "plots": {
             "comparison": "/static/plots/comparison.png",
             "inventory": "/static/plots/inventory.png",
             "prophet": "/static/plots/prophet_forecast.png"
         }
-    })
+    }
 
 
-@app.route("/download_inventory")
+@app.get("/download_inventory")
 def download_inventory():
-    return send_file(INVENTORY_CSV, as_attachment=True)
+    if not os.path.exists(INVENTORY_CSV):
+        raise HTTPException(status_code=404, detail="Inventory file not found")
+    return FileResponse(INVENTORY_CSV, media_type="text/csv", filename="inventory.csv")
 
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
