@@ -2,6 +2,7 @@
 <html>
 <head>
 <title>AI Powered Inventory Demand Forecasting</title>
+<link rel="icon" type="image/png" href="./logo.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -135,7 +136,7 @@ const results = document.getElementById("results");
 
 input.addEventListener("change", () => {
     const file = input.files[0];
-    if (!file || !file.name.endsWith(".csv")) return;
+    if (!file || !file.name.toLowerCase().endsWith(".csv")) return;
 
     nameText.textContent = file.name;
     nameText.style.color = "green";
@@ -147,18 +148,41 @@ input.addEventListener("change", () => {
     results.innerHTML = "<h2 style='color:white'>Processing... please wait</h2>";
 
     fetch("/upload", { method: "POST", body: fd })
-        .then(res => res.json())
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || data.error || "Upload failed");
+            }
+            return data;
+        })
         .then(d => {
-            if (d.error) {
-                results.innerHTML = `<h2 style="color:white;">${d.error}</h2>`;
+            const err = d.error || d.detail;
+            if (err) {
+                results.innerHTML = `<h2 style="color:white;">${err}</h2>`;
                 return;
             }
+            const ts = Date.now();
 
             results.innerHTML = `
                 <div class="card">
                     <h3>AI Decision</h3>
                     <b>Best Model:</b> ${d.best_model}
                     <ul>${d.insights.map(i => `<li>${i}</li>`).join("")}</ul>
+                </div>
+
+                <div class="card">
+                    <h3>AI Risk & Reorder Plan</h3>
+                    <p><b>Risk Score:</b> ${d.ai.risk_score}/100 (${d.ai.risk_level})</p>
+                    <p><b>Lead Time:</b> ${d.ai.lead_time_days} days</p>
+                    <p><b>Reorder Point:</b> ${d.ai.reorder_point.toFixed(2)}</p>
+                    <p><b>Recommended Order Qty:</b> ${d.ai.recommended_order_qty.toFixed(2)}</p>
+                    <p><b>Next 14-Day Demand:</b> ${d.ai.next_14_day_demand.toFixed(2)}</p>
+                    <p>${d.ai.summary}</p>
+                    <h4>Top Demand Drivers</h4>
+                    <table>
+                        <tr><th>Feature</th><th>Importance</th></tr>
+                        ${d.ai.top_drivers.map(x => `<tr><td>${x.feature}</td><td>${x.importance.toFixed(4)}</td></tr>`).join("")}
+                    </table>
                 </div>
 
                 <div class="card">
@@ -171,10 +195,13 @@ input.addEventListener("change", () => {
 
                 <a href="/download_inventory" class="download-btn">Download Inventory CSV</a>
 
-                <div class="card"><img src="${d.plots.comparison}" width="100%"></div>
-                <div class="card"><img src="${d.plots.inventory}" width="100%"></div>
-                <div class="card"><img src="${d.plots.prophet}" width="100%"></div>
+                <div class="card"><img src="${d.plots.comparison}?t=${ts}" width="100%"></div>
+                <div class="card"><img src="${d.plots.inventory}?t=${ts}" width="100%"></div>
+                <div class="card"><img src="${d.plots.prophet}?t=${ts}" width="100%"></div>
             `;
+        })
+        .catch(err => {
+            results.innerHTML = `<h2 style="color:white;">${err.message}</h2>`;
         });
 });
 
