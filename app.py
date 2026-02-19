@@ -1,12 +1,13 @@
 from prophet import Prophet
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from datetime import datetime, timedelta, timezone
 
 import matplotlib
 matplotlib.use("Agg")
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
 import numpy as np
@@ -14,7 +15,11 @@ import matplotlib.pyplot as plt
 import os
 from scipy.stats import zscore
 from io import BytesIO
+import hashlib
+import json
+import secrets
 import jwt
+from jwt.exceptions import InvalidTokenError
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -22,17 +27,171 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 PLOT_DIR = "static/plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
 INVENTORY_CSV = "static/inventory.csv"
+JWT_SECRET = os.getenv("JWT_SECRET", "change-this-secret")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = 60
+ACCESS_COOKIE_NAME = "access_token"
+APP_USERNAME = os.getenv("APP_USERNAME", "admin")
+APP_PASSWORD = os.getenv("APP_PASSWORD", "admin123")
+USERS_DB = "users.json"
+
+
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+
+
+def load_users() -> dict:
+    if not os.path.exists(USERS_DB):
+        return {}
+    try:
+        with open(USERS_DB, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_users(users: dict) -> None:
+    with open(USERS_DB, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=2)
+
+
+def ensure_default_user() -> None:
+    users = load_users()
+    if APP_USERNAME in users:
+        return
+    salt = secrets.token_hex(16)
+    users[APP_USERNAME] = {
+        "salt": salt,
+        "password_hash": hash_password(APP_PASSWORD, salt),
+    }
+    save_users(users)
+
+
+ensure_default_user()
+
+
+def create_access_token(subject: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
+    payload = {"sub": subject, "exp": expire}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def is_authenticated(request: Request) -> bool:
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return bool(payload.get("sub"))
+    except InvalidTokenError:
+        return False
+
+
+def require_auth(request: Request) -> str:
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    return username
+
+
+@app.get("/login")
+def login_page(request: Request):
+    if is_authenticated(request):
+        return RedirectResponse(url="/", status_code=303)
+    if not os.path.exists("static/login.html"):
+        raise HTTPException(status_code=404, detail="Login page not found")
+    return FileResponse("static/login.html")
+
+
+@app.post("/login")
+def login(username: str = Form(...), password: str = Form(...)):
+    users = load_users()
+    record = users.get(username)
+    if not record:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    salt = record.get("salt")
+    password_hash = record.get("password_hash")
+    if not salt or not password_hash:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    if hash_password(password, salt) != password_hash:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = create_access_token(username)
+    response = JSONResponse({"message": "Login successful"})
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=JWT_EXPIRE_MINUTES * 60,
+    )
+    return response
+
+
+@app.get("/register")
+def register_page(request: Request):
+    if is_authenticated(request):
+        return RedirectResponse(url="/", status_code=303)
+    if not os.path.exists("static/register.html"):
+        raise HTTPException(status_code=404, detail="Register page not found")
+    return FileResponse("static/register.html")
+
+
+@app.post("/register")
+def register(
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    username = username.strip()
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if password != confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    users = load_users()
+    if username in users:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    salt = secrets.token_hex(16)
+    users[username] = {
+        "salt": salt,
+        "password_hash": hash_password(password, salt),
+    }
+    save_users(users)
+    return JSONResponse({"message": "Registered successfully"})
+
+
+@app.post("/logout")
+def logout():
+    response = JSONResponse({"message": "Logged out"})
+    response.delete_cookie(ACCESS_COOKIE_NAME)
+    return response
 
 
 @app.get("/")
-def index():
+def index(request: Request):
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
     if not os.path.exists("static/index.html"):
         raise HTTPException(status_code=404, detail="Frontend file not found")
     return FileResponse("static/index.html")
 
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(request: Request, file: UploadFile = File(...)):
+    require_auth(request)
     contents = await file.read()
     try:
         df = pd.read_csv(BytesIO(contents), low_memory=False)
@@ -73,7 +232,7 @@ async def upload(file: UploadFile = File(...)):
     holiday_cols = [c for c in df.columns if c.startswith("StateHoliday_")]
     df[holiday_cols] = df[holiday_cols].astype(int)
 
-    # prophet
+    # prophet~
     prophet_df = df[["Date", "Sales"] + holiday_cols].rename(
         columns={"Date": "ds", "Sales": "y"}
     )
@@ -291,7 +450,8 @@ async def upload(file: UploadFile = File(...)):
 
 
 @app.get("/download_inventory")
-def download_inventory():
+def download_inventory(request: Request):
+    require_auth(request)
     if not os.path.exists(INVENTORY_CSV):
         raise HTTPException(status_code=404, detail="Inventory file not found")
     return FileResponse(INVENTORY_CSV, media_type="text/csv", filename="inventory.csv")
@@ -299,5 +459,4 @@ def download_inventory():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
