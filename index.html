@@ -2,7 +2,7 @@
 <html>
 <head>
 <title>AI Powered Inventory Demand Forecasting</title>
-<link rel="icon" type="image/png" href="./logo.png">
+<link rel="icon" type="image/png" href="/static/logo.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
@@ -11,6 +11,34 @@ body {
     height: 100vh;
     background-color:#b6cdea;
     font-family: Arial, sans-serif;
+}
+
+.docs-btn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    padding: 8px 14px;
+    background: white;
+    color: black;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: bold;
+    z-index: 1000;
+}
+
+.logout-btn {
+    position: fixed;
+    top: 16px;
+    right: 96px;
+    padding: 8px 14px;
+    background: white;
+    color: black;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: bold;
+    z-index: 1000;
+    border: none;
+    cursor: pointer;
 }
 
 .container {
@@ -112,6 +140,8 @@ th, td {
 </head>
 
 <body>
+<button class="logout-btn" onclick="logout()">Logout</button>
+<a class="docs-btn" href="http://127.0.0.1:8000/docs" target="_blank">Docs</a>
 <div class="container">
 <div class="left-panel">
 <label class="box">
@@ -136,7 +166,19 @@ const results = document.getElementById("results");
 
 input.addEventListener("change", () => {
     const file = input.files[0];
-    if (!file || !file.name.toLowerCase().endsWith(".csv")) return;
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+        nameText.textContent = file.name;
+        nameText.style.color = "red";
+        uploadText.textContent = "please upload .csv file";
+        results.innerHTML = `
+            <h2 style="color:white">
+                Please upload .csv file only
+            </h2>
+        `;
+        return;
+    }
 
     nameText.textContent = file.name;
     nameText.style.color = "green";
@@ -216,6 +258,11 @@ function clearAll() {
             Upload CSV to start AI analysis
         </h2>
     `;
+}
+
+async function logout() {
+    await fetch("/logout", { method: "POST" });
+    window.location.href = "/login";
 }
 </script>
 </body>
