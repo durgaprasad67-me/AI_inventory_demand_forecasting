@@ -100,12 +100,18 @@ button {
         <input id="confirm_password" name="confirm_password" type="password" minlength="6" required />
         <button type="submit">Register</button>
         <div id="msg"></div>
-        <div class="switch-link">Already have an account? <a href="/login">Login here</a></div>
+        <div class="switch-link">Already have an account? <a id="loginLink" href="/login">Login here</a></div>
     </form>
 
 <script>
 const form = document.getElementById("registerForm");
 const msg = document.getElementById("msg");
+const loginLink = document.getElementById("loginLink");
+const signedQuery = window.location.search || "";
+
+if (loginLink && signedQuery) {
+    loginLink.href = `/login${signedQuery}`;
+}
 
 function formatRegisterError(data) {
     const detail = data?.detail;
@@ -129,7 +135,7 @@ form.addEventListener("submit", async (e) => {
     body.append("confirm_password", form.confirm_password.value);
 
     try {
-        const res = await fetch("/register", {
+        const res = await fetch(`/register${signedQuery}`, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body
@@ -143,7 +149,7 @@ form.addEventListener("submit", async (e) => {
         msg.textContent = "Registered successfully. Redirecting to login...";
         msg.style.color = "green";
         setTimeout(() => {
-            window.location.href = "/login";
+            window.location.href = `/login${signedQuery}`;
         }, 800);
     } catch (err) {
         msg.textContent = err.message;

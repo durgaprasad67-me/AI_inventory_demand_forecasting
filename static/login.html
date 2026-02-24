@@ -97,12 +97,18 @@ button:focus-visible {
         />
         <button type="submit">Login</button>
         <div id="msg"></div>
-        <div class="switch-link">New user? <a href="/register">Register here</a></div>
+        <div class="switch-link">New user? <a id="registerLink" href="/register">Register here</a></div>
     </form>
 
 <script>
 const form = document.getElementById("loginForm");
 const msg = document.getElementById("msg");
+const registerLink = document.getElementById("registerLink");
+const signedQuery = window.location.search || "";
+
+if (registerLink && signedQuery) {
+    registerLink.href = `/register${signedQuery}`;
+}
 
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -114,7 +120,7 @@ form.addEventListener("submit", async (e) => {
     body.append("password", form.password.value);
 
     try {
-        const res = await fetch("/login", {
+        const res = await fetch(`/login${signedQuery}`, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body
