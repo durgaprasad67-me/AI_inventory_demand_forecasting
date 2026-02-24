@@ -50,7 +50,7 @@ APP_USERNAME = os.getenv("APP_USERNAME", "admin").strip() or "admin"
 APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0"
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT") or "8000")
-USERS_DB = "users.json"
+USERS_DB = os.getenv("USERS_DB", "users.json").strip() or "users.json"
 IN_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
 
 
@@ -130,6 +130,9 @@ def load_users() -> dict:
 
 
 def save_users(users: dict) -> None:
+    users_parent = os.path.dirname(USERS_DB)
+    if users_parent:
+        os.makedirs(users_parent, exist_ok=True)
     with open(USERS_DB, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
 
@@ -548,6 +551,11 @@ async def upload(request: Request, file: UploadFile = File(...)):
             "prophet": "/static/plots/prophet_forecast.png"
         }
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/download_inventory")

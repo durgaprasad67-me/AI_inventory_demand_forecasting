@@ -183,7 +183,7 @@ th, td {
 
 <body>
 <button class="logout-link" type="button" onclick="logout()">Logout</button>
-<a class="docs-btn" href="http://127.0.0.1:8000/docs" target="_blank">Docs</a>
+<a class="docs-btn" href="/docs" target="_blank">Docs</a>
 <div class="container">
 <div class="left-panel">
 <label class="box">
@@ -244,7 +244,9 @@ input.addEventListener("change", () => {
         .then(async res => {
             const data = await res.json();
             if (!res.ok) {
-                throw new Error(data.detail || data.error || "Upload failed");
+                const detail = data?.detail;
+                const msg = typeof detail === "string" ? detail : detail?.message || data?.error || "Upload failed";
+                throw new Error(msg);
             }
             return data;
         })
