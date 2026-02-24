@@ -203,9 +203,9 @@ def login(username: str = Form(...), password: str = Form(...)):
     salt = record.get("salt")
     password_hash = record.get("password_hash")
     if not salt or not password_hash:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid password")
     if hash_password(password, salt) != password_hash:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid password")
 
     token = create_access_token(username)
     response = JSONResponse({"message": "Login successful"})
@@ -255,7 +255,7 @@ def register(
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "Username already exists",
+                "message": "User already exists",
                 "suggested_usernames": suggest_usernames(username, users),
             },
         )
