@@ -46,12 +46,20 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256").strip() or "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 ACCESS_COOKIE_NAME = "access_token"
 JWT_COOKIE_SECURE = env_bool("JWT_COOKIE_SECURE", default=False)
+JWT_COOKIE_SAMESITE = (os.getenv("JWT_COOKIE_SAMESITE") or "").strip().lower()
 APP_USERNAME = os.getenv("APP_USERNAME", "admin").strip() or "admin"
 APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0"
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT") or "8000")
 USERS_DB = os.getenv("USERS_DB", "users.json").strip() or "users.json"
 IN_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
+
+if not JWT_COOKIE_SAMESITE:
+    JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
+if JWT_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
+if JWT_COOKIE_SAMESITE == "none" and not JWT_COOKIE_SECURE:
+    JWT_COOKIE_SECURE = True
 
 
 if not JWT_SECRET or JWT_SECRET == "replace with a long random secret":
@@ -213,7 +221,7 @@ def login(username: str = Form(...), password: str = Form(...)):
         key=ACCESS_COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="lax",
+        samesite=JWT_COOKIE_SAMESITE,
         secure=JWT_COOKIE_SECURE,
         max_age=JWT_EXPIRE_MINUTES * 60,
     )
