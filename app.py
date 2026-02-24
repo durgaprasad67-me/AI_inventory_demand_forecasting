@@ -53,6 +53,7 @@ APP_HOST = os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0"
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT") or "8000")
 USERS_DB = os.getenv("USERS_DB", "users.json").strip() or "users.json"
 IN_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
+AUTH_BYPASS = env_bool("AUTH_BYPASS", default=IN_HF_SPACE)
 
 if not JWT_COOKIE_SAMESITE:
     JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
@@ -167,6 +168,8 @@ def create_access_token(subject: str) -> str:
 
 
 def is_authenticated(request: Request) -> bool:
+    if AUTH_BYPASS:
+        return True
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     if not token:
         return False
@@ -178,6 +181,8 @@ def is_authenticated(request: Request) -> bool:
 
 
 def require_auth(request: Request) -> str:
+    if AUTH_BYPASS:
+        return "space-user"
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
