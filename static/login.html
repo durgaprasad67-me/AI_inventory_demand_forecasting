@@ -86,23 +86,15 @@ button:focus-visible {
             id="username"
             name="username"
             type="text"
-            minlength="3"
-            pattern="[A-Za-z][A-Za-z0-9]*"
-            title="Username must start with a letter and use only letters/numbers (example: Username123)"
             required
         />
-        <div class="hint">Username: start with letter, and use only letters/numbers(example: Username123).</div>
         <label for="password">Password</label>
         <input
             id="password"
             name="password"
             type="password"
-            minlength="6"
-            pattern="(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}"
-            title="Password must be at least 6 characters and include at least 1 number and 1 special character"
             required
         />
-        <div class="hint">Password: minimum 6 characters, at least 1 number, at least 1 special character.</div>
         <button type="submit">Login</button>
         <div id="msg"></div>
         <div class="switch-link">New user? <a href="/register">Register here</a></div>
