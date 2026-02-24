@@ -195,12 +195,11 @@ def login_page(request: Request):
 @app.post("/login")
 def login(username: str = Form(...), password: str = Form(...)):
     username = validate_username(username)
-    validate_password(password)
 
     users = load_users()
     record = users.get(username)
     if not record:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=404, detail="User does not exist. Please register first.")
     salt = record.get("salt")
     password_hash = record.get("password_hash")
     if not salt or not password_hash:
