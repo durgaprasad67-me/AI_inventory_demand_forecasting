@@ -47,6 +47,29 @@ input {
     border-radius: 8px;
 }
 
+.password-wrap {
+    position: relative;
+}
+
+.password-wrap input {
+    padding-right: 64px;
+}
+
+.toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    margin-top: 0;
+    width: auto;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid #b7c7e7;
+    background: #ffffff;
+    color: #1f5fbf;
+    font-weight: 600;
+}
+
 button {
     margin-top: 16px;
     width: 100%;
@@ -86,18 +109,24 @@ button {
         />
         <div class="hint">Username: start with letter, and use only letters/numbers (example: Username123).</div>
         <label for="password">Password</label>
-        <input
-            id="password"
-            name="password"
-            type="password"
-            minlength="6"
-            pattern="(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}"
-            title="Password must be at least 6 characters and include at least 1 number and 1 special character"
-            required
-        />
+        <div class="password-wrap">
+            <input
+                id="password"
+                name="password"
+                type="password"
+                minlength="6"
+                pattern="(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}"
+                title="Password must be at least 6 characters and include at least 1 number and 1 special character"
+                required
+            />
+            <button id="togglePassword" class="toggle-password" type="button" aria-label="Show password">Show</button>
+        </div>
         <div class="hint">Password: minimum 6 characters, at least 1 number, at least 1 special character.</div>
         <label for="confirm_password">Confirm Password</label>
-        <input id="confirm_password" name="confirm_password" type="password" minlength="6" required />
+        <div class="password-wrap">
+            <input id="confirm_password" name="confirm_password" type="password" minlength="6" required />
+            <button id="toggleConfirmPassword" class="toggle-password" type="button" aria-label="Show confirm password">Show</button>
+        </div>
         <button type="submit">Register</button>
         <div id="msg"></div>
         <div class="switch-link">Already have an account? <a id="loginLink" href="/login">Login here</a></div>
@@ -107,11 +136,27 @@ button {
 const form = document.getElementById("registerForm");
 const msg = document.getElementById("msg");
 const loginLink = document.getElementById("loginLink");
+const passwordInput = document.getElementById("password");
+const confirmPasswordInput = document.getElementById("confirm_password");
+const togglePassword = document.getElementById("togglePassword");
+const toggleConfirmPassword = document.getElementById("toggleConfirmPassword");
 const signedQuery = window.location.search || "";
 
 if (loginLink && signedQuery) {
     loginLink.href = `/login${signedQuery}`;
 }
+
+function wirePasswordToggle(button, input, hideLabel, showLabel) {
+    if (!button || !input) return;
+    button.addEventListener("click", () => {
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        button.textContent = show ? hideLabel : showLabel;
+    });
+}
+
+wirePasswordToggle(togglePassword, passwordInput, "Hide", "Show");
+wirePasswordToggle(toggleConfirmPassword, confirmPasswordInput, "Hide", "Show");
 
 function formatRegisterError(data) {
     const detail = data?.detail;

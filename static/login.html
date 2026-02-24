@@ -47,6 +47,29 @@ input {
     border-radius: 8px;
 }
 
+.password-wrap {
+    position: relative;
+}
+
+.password-wrap input {
+    padding-right: 64px;
+}
+
+.toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    margin-top: 0;
+    width: auto;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid #b7c7e7;
+    background: #ffffff;
+    color: #1f5fbf;
+    font-weight: 600;
+}
+
 button {
     margin-top: 16px;
     width: 100%;
@@ -89,12 +112,15 @@ button:focus-visible {
             required
         />
         <label for="password">Password</label>
-        <input
-            id="password"
-            name="password"
-            type="password"
-            required
-        />
+        <div class="password-wrap">
+            <input
+                id="password"
+                name="password"
+                type="password"
+                required
+            />
+            <button id="togglePassword" class="toggle-password" type="button" aria-label="Show password">Show</button>
+        </div>
         <button type="submit">Login</button>
         <div id="msg"></div>
         <div class="switch-link">New user? <a id="registerLink" href="/register">Register here</a></div>
@@ -104,10 +130,21 @@ button:focus-visible {
 const form = document.getElementById("loginForm");
 const msg = document.getElementById("msg");
 const registerLink = document.getElementById("registerLink");
+const passwordInput = document.getElementById("password");
+const togglePassword = document.getElementById("togglePassword");
 const signedQuery = window.location.search || "";
 
 if (registerLink && signedQuery) {
     registerLink.href = `/register${signedQuery}`;
+}
+
+if (togglePassword && passwordInput) {
+    togglePassword.addEventListener("click", () => {
+        const show = passwordInput.type === "password";
+        passwordInput.type = show ? "text" : "password";
+        togglePassword.textContent = show ? "Hide" : "Show";
+        togglePassword.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
 }
 
 form.addEventListener("submit", async (e) => {
