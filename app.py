@@ -51,9 +51,10 @@ APP_USERNAME = os.getenv("APP_USERNAME", "admin").strip() or "admin"
 APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0"
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT") or "8000")
-USERS_DB = os.getenv("USERS_DB", "users.json").strip() or "users.json"
 IN_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
 AUTH_BYPASS = env_bool("AUTH_BYPASS", default=False)
+DEFAULT_USERS_DB = "/data/users.json" if IN_HF_SPACE and os.path.isdir("/data") else "users.json"
+USERS_DB = os.getenv("USERS_DB", DEFAULT_USERS_DB).strip() or DEFAULT_USERS_DB
 
 if not JWT_COOKIE_SAMESITE:
     JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
@@ -214,7 +215,9 @@ def login(username: str = Form(...), password: str = Form(...)):
     username = validate_username(username)
 
     users = load_users()
-    record = users.get(username)
+    username_lookup = {name.lower(): name for name in users.keys()}
+    canonical_username = username_lookup.get(username.lower())
+    record = users.get(canonical_username) if canonical_username else None
     if not record:
         raise HTTPException(status_code=404, detail="User does not exist. Please register first.")
     salt = record.get("salt")
@@ -224,7 +227,7 @@ def login(username: str = Form(...), password: str = Form(...)):
     if hash_password(password, salt) != password_hash:
         raise HTTPException(status_code=401, detail="Invalid password")
 
-    token = create_access_token(username)
+    token = create_access_token(canonical_username or username)
     response = JSONResponse({"message": "Login successful"})
     response.set_cookie(
         key=ACCESS_COOKIE_NAME,
