@@ -127,6 +127,10 @@ form.addEventListener("submit", async (e) => {
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body
         });
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+            throw new Error("Server returned HTML instead of JSON. Open the app from the Space UI and try again.");
+        }
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Login failed");
         window.location.href = "/";
