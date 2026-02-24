@@ -53,7 +53,7 @@ APP_HOST = os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0"
 APP_PORT = int(os.getenv("APP_PORT") or os.getenv("PORT") or "8000")
 USERS_DB = os.getenv("USERS_DB", "users.json").strip() or "users.json"
 IN_HF_SPACE = bool(os.getenv("SPACE_ID") or os.getenv("HF_SPACE_ID"))
-AUTH_BYPASS = env_bool("AUTH_BYPASS", default=IN_HF_SPACE)
+AUTH_BYPASS = env_bool("AUTH_BYPASS", default=False)
 
 if not JWT_COOKIE_SAMESITE:
     JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
