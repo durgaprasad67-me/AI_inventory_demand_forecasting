@@ -279,7 +279,7 @@ def logout_post():
 
 @app.get("/logout")
 def logout_get():
-    response = RedirectResponse(url="/login", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie(ACCESS_COOKIE_NAME)
     return response
 
@@ -287,7 +287,9 @@ def logout_get():
 @app.get("/")
 def index(request: Request):
     if not is_authenticated(request):
-        return RedirectResponse(url="/login", status_code=303)
+        if not os.path.exists("static/login.html"):
+            raise HTTPException(status_code=404, detail="Login page not found")
+        return FileResponse("static/login.html")
     if not os.path.exists("static/index.html"):
         raise HTTPException(status_code=404, detail="Frontend file not found")
     return FileResponse("static/index.html")
