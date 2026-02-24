@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Register</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, #9ec5ff, #d7e7ff);
+    font-family: Arial, sans-serif;
+}
+
+.card {
+    background: white;
+    width: min(92vw, 360px);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 18px 50px rgba(26, 57, 114, 0.2);
+}
+
+h2 {
+    margin-top: 0;
+}
+
+label {
+    display: block;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.hint {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #4c5c7a;
+}
+
+input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid #b7c7e7;
+    border-radius: 8px;
+}
+
+button {
+    margin-top: 16px;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    background: #1f5fbf;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#msg {
+    min-height: 20px;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.switch-link {
+    margin-top: 12px;
+    font-size: 14px;
+}
+</style>
+</head>
+<body>
+    <form class="card" id="registerForm">
+        <h2>Create account</h2>
+        <label for="username">Username</label>
+        <input
+            id="username"
+            name="username"
+            type="text"
+            minlength="3"
+            pattern="[A-Za-z][A-Za-z0-9]*"
+            title="Username must start with a letter and use only letters/numbers (example: Username123)"
+            required
+        />
+        <div class="hint">Username: start with letter, and use only letters/numbers (example: Username123).</div>
+        <label for="password">Password</label>
+        <input
+            id="password"
+            name="password"
+            type="password"
+            minlength="6"
+            pattern="(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}"
+            title="Password must be at least 6 characters and include at least 1 number and 1 special character"
+            required
+        />
+        <div class="hint">Password: minimum 6 characters, at least 1 number, at least 1 special character.</div>
+        <label for="confirm_password">Confirm Password</label>
+        <input id="confirm_password" name="confirm_password" type="password" minlength="6" required />
+        <button type="submit">Register</button>
+        <div id="msg"></div>
+        <div class="switch-link">Already have an account? <a href="/login">Login here</a></div>
+    </form>
+
+<script>
+const form = document.getElementById("registerForm");
+const msg = document.getElementById("msg");
+
+function formatRegisterError(data) {
+    const detail = data?.detail;
+    if (typeof detail === "string") {
+        return detail;
+    }
+    if (detail && typeof detail === "object") {
+        return detail.message || "Registration failed";
+    }
+    return "Registration failed";
+}
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.textContent = "Creating account...";
+    msg.style.color = "black";
+
+    const body = new URLSearchParams();
+    body.append("username", form.username.value);
+    body.append("password", form.password.value);
+    body.append("confirm_password", form.confirm_password.value);
+
+    try {
+        const res = await fetch("/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(formatRegisterError(data));
+        msg.textContent = "Registered successfully. Redirecting to login...";
+        msg.style.color = "green";
+        setTimeout(() => {
+            window.location.href = "/login";
+        }, 800);
+    } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = "red";
+    }
+});
+</script>
+</body>
+</html>
