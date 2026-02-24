@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AI Powered Inventory Demand Forecasting</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    height: 100vh;
+    background-color:#b6cdea;
+    font-family: Arial, sans-serif;
+}
+
+.docs-btn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    padding: 8px 14px;
+    background: white;
+    color: black;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: bold;
+    z-index: 1000;
+}
+
+.logout-btn {
+    position: fixed;
+    top: 16px;
+    right: 96px;
+    padding: 8px 14px;
+    background: white;
+    color: black;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: bold;
+    z-index: 1000;
+    border: none;
+    cursor: pointer;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+.left-panel {
+    width: 30%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.right-panel {
+    width: 70%;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.box {
+    border: 2px dashed white;
+    border-radius: 25px;
+    width: 250px;
+    height: 250px;
+    background-color: rgb(246, 251, 252);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.box img {
+    width: 160px;
+}
+
+.upload-text {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.file-name {
+    margin-top: 6px;
+    font-size: 13px;
+    text-align: center;
+    word-break: break-all;
+}
+
+
+.clear-btn {
+    margin-top: 12px;
+    padding: 6px 16px;
+    background: white;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border: none;
+}
+
+
+.plot-card {
+    background: white;
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+table {
+    background: white;
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: center;
+}
+
+.download-btn {
+    display: inline-block;
+    padding: 10px 15px;
+    background: white;
+    border-radius: 10px;
+    text-decoration: none;
+    color: black;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+.card { background:white; 
+        padding:15px;
+        border-radius:12px; 
+        margin-bottom:15px; 
+}
+</style>
+</head>
+
+<body>
+<button class="logout-btn" onclick="logout()">Logout</button>
+<a class="docs-btn" href="http://127.0.0.1:8000/docs" target="_blank">Docs</a>
+<div class="container">
+<div class="left-panel">
+<label class="box">
+    <img src="/static/Upload_icon.png" alt="Upload CSV">
+        <p class="upload-text" id="uploadText">Upload a CSV file</p>
+        <p class="file-name" id="fileName"></p>
+        <input type="file" id="fileInput" accept=".csv" hidden>
+</label>
+<button class="clear-btn" onclick="clearAll()">Clear</button>
+</div>
+
+<div class="right-panel" id="results">
+<h2 style="color:white">Upload CSV to start AI analysis</h2>
+</div>
+</div>
+
+<script>
+const input = document.getElementById("fileInput");
+const nameText = document.getElementById("fileName");
+const uploadText = document.getElementById("uploadText");
+const results = document.getElementById("results");
+
+input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+        nameText.textContent = file.name;
+        nameText.style.color = "red";
+        uploadText.textContent = "please upload .csv file";
+        results.innerHTML = `
+            <h2 style="color:white">
+                Please upload .csv file only
+            </h2>
+        `;
+        return;
+    }
+
+    nameText.textContent = file.name;
+    nameText.style.color = "green";
+    uploadText.textContent = "Selected file:";
+
+    const fd = new FormData();
+    fd.append("file", file);
+
+    results.innerHTML = "<h2 style='color:white'>Processing... please wait</h2>";
+
+    fetch("/upload", { method: "POST", body: fd })
+        .then(async res => {
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || data.error || "Upload failed");
+            }
+            return data;
+        })
+        .then(d => {
+            const err = d.error || d.detail;
+            if (err) {
+                results.innerHTML = `<h2 style="color:white;">${err}</h2>`;
+                return;
+            }
+            const ts = Date.now();
+
+            results.innerHTML = `
+                <div class="card">
+                    <h3>AI Decision</h3>
+                    <b>Best Model:</b> ${d.best_model}
+                    <ul>${d.insights.map(i => `<li>${i}</li>`).join("")}</ul>
+                </div>
+
+                <div class="card">
+                    <h3>AI Risk & Reorder Plan</h3>
+                    <p><b>Risk Score:</b> ${d.ai.risk_score}/100 (${d.ai.risk_level})</p>
+                    <p><b>Lead Time:</b> ${d.ai.lead_time_days} days</p>
+                    <p><b>Reorder Point:</b> ${d.ai.reorder_point.toFixed(2)}</p>
+                    <p><b>Recommended Order Qty:</b> ${d.ai.recommended_order_qty.toFixed(2)}</p>
+                    <p><b>Next 14-Day Demand:</b> ${d.ai.next_14_day_demand.toFixed(2)}</p>
+                    <p>${d.ai.summary}</p>
+                    <h4>Top Demand Drivers</h4>
+                    <table>
+                        <tr><th>Feature</th><th>Importance</th></tr>
+                        ${d.ai.top_drivers.map(x => `<tr><td>${x.feature}</td><td>${x.importance.toFixed(4)}</td></tr>`).join("")}
+                    </table>
+                </div>
+
+                <div class="card">
+                    <table>
+                        <tr><th>Model</th><th>RMSE</th><th>MAE</th></tr>
+                        <tr><td>XGBoost</td><td>${d.rmse.toFixed(2)}</td><td>${d.mae.toFixed(2)}</td></tr>
+                        <tr><td>Prophet</td><td>${d.p_rmse.toFixed(2)}</td><td>${d.p_mae.toFixed(2)}</td></tr>
+                    </table>
+                </div>
+
+                <a href="/download_inventory" class="download-btn">Download Inventory CSV</a>
+
+                <div class="card"><img src="${d.plots.comparison}?t=${ts}" width="100%"></div>
+                <div class="card"><img src="${d.plots.inventory}?t=${ts}" width="100%"></div>
+                <div class="card"><img src="${d.plots.prophet}?t=${ts}" width="100%"></div>
+            `;
+        })
+        .catch(err => {
+            results.innerHTML = `<h2 style="color:white;">${err.message}</h2>`;
+        });
+});
+
+function clearAll() {
+    input.value = "";
+    nameText.textContent = "";
+    nameText.style.color = "black";
+    uploadText.textContent = "Upload a CSV file";
+
+    results.innerHTML = `
+        <h2 style="color:white">
+            Upload CSV to start AI analysis
+        </h2>
+    `;
+}
+
+async function logout() {
+    await fetch("/logout", { method: "POST" });
+    window.location.href = "/login";
+}
+</script>
+</body>
+</html>
