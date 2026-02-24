@@ -61,13 +61,16 @@ input {
     right: 8px;
     transform: translateY(-50%);
     margin-top: 0;
-    width: auto;
-    padding: 4px 8px;
-    border-radius: 8px;
-    border: 1px solid #b7c7e7;
-    background: #ffffff;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid #d3dcf0;
+    background: #f8fbff;
     color: #1f5fbf;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
 }
 
 button {
@@ -119,7 +122,7 @@ button:focus-visible {
                 type="password"
                 required
             />
-            <button id="togglePassword" class="toggle-password" type="button" aria-label="Show password">Show</button>
+            <button id="togglePassword" class="toggle-password" type="button" aria-label="Show password">o</button>
         </div>
         <button type="submit">Login</button>
         <div id="msg"></div>
@@ -142,7 +145,7 @@ if (togglePassword && passwordInput) {
     togglePassword.addEventListener("click", () => {
         const show = passwordInput.type === "password";
         passwordInput.type = show ? "text" : "password";
-        togglePassword.textContent = show ? "Hide" : "Show";
+        togglePassword.textContent = show ? "o/" : "o";
         togglePassword.setAttribute("aria-label", show ? "Hide password" : "Show password");
     });
 }
