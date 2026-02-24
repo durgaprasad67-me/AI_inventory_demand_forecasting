@@ -241,7 +241,7 @@ input.addEventListener("change", () => {
 
     results.innerHTML = "<h2 style='color:white'>Processing... please wait</h2>";
 
-    fetch(`/upload${signedQuery}`, { method: "POST", body: fd })
+    fetch(`/upload${signedQuery}`, { method: "POST", credentials: "include", body: fd })
         .then(async res => {
             const contentType = res.headers.get("content-type") || "";
             if (!contentType.includes("application/json")) {
@@ -318,7 +318,7 @@ function clearAll() {
 }
 
 function logout() {
-    fetch(`/logout${signedQuery}`, { method: "POST" })
+    fetch(`/logout${signedQuery}`, { method: "POST", credentials: "include" })
         .finally(() => {
             window.location.href = `/${signedQuery}`;
         });

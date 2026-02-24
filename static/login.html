@@ -170,6 +170,7 @@ form.addEventListener("submit", async (e) => {
     try {
         const res = await fetch(`/login${signedQuery}`, {
             method: "POST",
+            credentials: "include",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body
         });

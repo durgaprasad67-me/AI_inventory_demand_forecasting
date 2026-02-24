@@ -61,6 +61,10 @@ if JWT_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
     JWT_COOKIE_SAMESITE = "none" if IN_HF_SPACE else "lax"
 if JWT_COOKIE_SAMESITE == "none" and not JWT_COOKIE_SECURE:
     JWT_COOKIE_SECURE = True
+if IN_HF_SPACE:
+    # In Hugging Face Spaces (embedded/proxied), cookies need explicit cross-site settings.
+    JWT_COOKIE_SAMESITE = "none"
+    JWT_COOKIE_SECURE = True
 
 
 if not JWT_SECRET or JWT_SECRET == "replace with a long random secret":
