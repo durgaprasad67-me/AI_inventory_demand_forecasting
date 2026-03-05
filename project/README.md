@@ -1,5 +1,4 @@
 # AI Inventory Forecast
-# AI Inventory Forecast
 
 FastAPI app for inventory demand forecasting and planning using XGBoost + Prophet, with authentication and optional local LLM insights via Ollama.
 
