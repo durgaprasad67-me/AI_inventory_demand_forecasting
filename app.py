@@ -83,8 +83,7 @@ if not APP_PASSWORD or APP_PASSWORD == "change me now":
     raise RuntimeError("Set APP_PASSWORD in .env (not the placeholder value).")
 
 
-def legacy_hash_password(password: str, salt: str) -> str:
-    return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+
 
 
 def hash_password(password: str, salt: str, iterations: int = PASSWORD_HASH_ITERATIONS) -> str:
@@ -97,19 +96,21 @@ def hash_password(password: str, salt: str, iterations: int = PASSWORD_HASH_ITER
     return dk.hex()
 
 
+
 def verify_password(password: str, record: dict) -> bool:
     salt = str(record.get("salt") or "")
     password_hash = str(record.get("password_hash") or "")
     if not salt or not password_hash:
         return False
-
     algo = str(record.get("password_algo") or "")
-    if algo == PASSWORD_HASH_ALGO:
-        iterations = int(record.get("password_iterations") or PASSWORD_HASH_ITERATIONS)
-        return secrets.compare_digest(password_hash, hash_password(password, salt, iterations))
 
-    # backward compatibility for older users created before PBKDF2 migration.
-    return secrets.compare_digest(password_hash, legacy_hash_password(password, salt))
+    # Accept only the current hashing algorithm.
+    if algo != PASSWORD_HASH_ALGO:
+        return False
+    iterations = int(record.get("password_iterations") or PASSWORD_HASH_ITERATIONS)
+    calculated_hash = hash_password(password, salt, iterations)
+    return secrets.compare_digest(password_hash, calculated_hash)
+
 
 
 def validate_username(username: str) -> str:
@@ -291,17 +292,6 @@ def login(username: str = Form(...), password: str = Form(...)):
     if not verify_password(password, record):
         raise HTTPException(status_code=401, detail="Invalid password")
 
-    # Upgrade legacy password hashes on successful login.
-    if record.get("password_algo") != PASSWORD_HASH_ALGO:
-        salt = str(record.get("salt") or "")
-        users[canonical_username] = {
-            **record,
-            "password_hash": hash_password(password, salt),
-            "password_algo": PASSWORD_HASH_ALGO,
-            "password_iterations": PASSWORD_HASH_ITERATIONS,
-        }
-        save_users(users)
-
     token = create_access_token(canonical_username or username)
     response = JSONResponse({"message": "Login successful"})
     response.set_cookie(
@@ -423,6 +413,8 @@ async def upload(request: Request, file: UploadFile = File(...)):
     if df.empty:
         raise HTTPException(status_code=400, detail="No rows left after filtering")
 
+#   Prepare data for Prophet
+
     df["StateHoliday"] = df["StateHoliday"].astype(str).replace("0", "none")
     df = pd.get_dummies(df, columns=["StateHoliday"])
     holiday_cols = [c for c in df.columns if c.startswith("StateHoliday_")]
@@ -431,6 +423,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
     prophet_df = df[["Date", "Sales"] + holiday_cols].rename(
         columns={"Date": "ds", "Sales": "y"}
     )
+
     prophet_df = prophet_df.replace([np.inf, -np.inf], np.nan).dropna()
     if len(prophet_df) < 2:
         raise HTTPException(
@@ -456,6 +449,9 @@ async def upload(request: Request, file: UploadFile = File(...)):
     plt.savefig(os.path.join(PLOT_DIR, "prophet_forecast.png"))
     plt.close()
 
+
+ # XGBoost feature engineering
+ 
     df["day"] = df["Date"].dt.day
     df["week"] = df["Date"].dt.isocalendar().week.astype(int)
     df["month"] = df["Date"].dt.month
